@@ -1,0 +1,8 @@
+[package]
+name = "rust-pwned-passwords"
+version = "0.1.0"
+authors = ["master-d <goodeveningthisisrobrichards@gmail.com>"]
+
+[dependencies]
+sha1 = "0.2.0"
+
