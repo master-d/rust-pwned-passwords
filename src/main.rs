@@ -9,6 +9,7 @@ use std::io::BufReader;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Read;
+use std::io::Error;
 
 struct HashFile {
     file: fs::File,
@@ -16,14 +17,14 @@ struct HashFile {
     hash: String
 }
 impl HashFile {
-    pub fn new(hash: String, create_file: bool) -> Option<HashFile> {
+    pub fn new(hash: String, create_file: bool) -> Result<HashFile,Error> {
         let dir: String = {
             let folder_bytes = &hash[..2];
             format!("hashes/{}",folder_bytes)
         };
         let filename = {
             let file_bytes = &hash[2..4];
-            format!("{:?}/{}.txt",dir,file_bytes)
+            format!("{}/{}.txt",dir,file_bytes)
         };
         if create_file {
             match fs::create_dir_all(&dir) {
@@ -31,20 +32,20 @@ impl HashFile {
                 Err(e) => panic!("Could not create folder {}",dir)
             };
         }
-        let file = match fs::OpenOptions::new()
+        println!("Opening file {}", filename);
+        match fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(create_file)
             .open(filename) {
                 Ok(file) => {
                     let size = file.metadata().unwrap().len();
-                    Some(HashFile { file, size, hash })
+                    Ok(HashFile { file, size, hash })
                 },
                 Err(e) => {
-                    None
+                    Err(e)
                 }
-            };
-        return file;
+            }
     }
     pub fn seek(&mut self) {
         let mut pos = self.size as i64/2;
@@ -57,7 +58,7 @@ impl HashFile {
         let mut buf: [u8; 40] = [0; 40];
         self.file.read_exact(&mut buf);
         unsafe {
-        String::from_utf8_unchecked(buf[..].to_vec())
+            String::from_utf8_unchecked(buf[..].to_vec())
         }
     }
     pub fn write_hash(&mut self, hash: &String) {
@@ -68,21 +69,16 @@ impl HashFile {
 
     pub fn check_pwd(&mut self) {
         println!("Checking for hash {} ({} bytes)",self.hash, self.hash.len());
-        //match HashFile::new(hash, false) {
-        //    Some(mut hf) => {
-                self.seek();
-                let fhash = self.read_hash();
-                println!("Read hash from file {:?}",fhash)
-        //    },
-        //    None => println!("Hash file does not exist for hash")
-        //}
+        self.seek();
+        let fhash = self.read_hash();
+        println!("Read hash from file {:?}",fhash)
     }
 } // end HashFile impl
 
-pub fn get_hash_for_pwd(password: String) -> String {
+pub fn get_hash_for_pwd(password: &String) -> String {
     let mut m = sha1::Sha1::new();
     m.update(password.as_bytes() );
-    m.digest().to_string()
+    m.digest().to_string().to_uppercase()
 }
 
 pub fn update_hash_fs(file_path: &String) {
@@ -116,22 +112,27 @@ fn main() {
         Check password for pwnage.\n\n\
         \t-f [HASH_FILE]\tcreate hash file structure from pwned password file or update file"),
         2 => {
-            let hash = get_hash_for_pwd(args[1].to_string());
+            let hash = get_hash_for_pwd(&args[1]);
             println!("Checking {} for pwnage -- {}", args[1], hash);
             match HashFile::new(hash, false) {
-                Some(mut hf) => {
+                Ok(mut hf) => {
                     hf.check_pwd();
                 },
-                None => println!("Hash file does not exist")
+                Err(e) => println!("{:?}",e)
             }
         },
         _ => {
             // check 1st argument to see what operation user wants to perform
             match args[1].as_ref() {
                 "-f" => {
-                    update_hash_fs(&args[2])
+                    update_hash_fs(&args[2]);
+                },
+                "-h" => {
+                    println!("Hash for '{}' is {}", args[2], get_hash_for_pwd(&args[2]));
                 }
-                _ => println!("Unknown command '{}'", args[1])
+                _ => {
+                    println!("Unknown command '{}'", args[1])
+                }
             }
         }
     }    
