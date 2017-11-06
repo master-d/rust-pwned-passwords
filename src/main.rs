@@ -67,12 +67,36 @@ impl HashFile {
         self.file.write(line.as_bytes());
     }
 
-    pub fn check_pwd(&mut self) {
-        println!("Checking for hash {} ({} bytes)",self.hash, self.hash.len());
-        self.seek();
-        let fhash = self.read_hash();
-        println!("Read hash from file {:?}",fhash)
+    pub fn check_pwd(&mut self) -> bool {
+        println!("Checking for hash {} (filesize {} bytes)",self.hash, self.size);
+        let seekto = self.size as i64/2;
+        self.binary_search(seekto);
+        let cmp_hash = self.read_hash();
+        self.hash == cmp_hash
     }
+
+    pub fn binary_search(&mut self, seekto: i64) {
+        println!("Checking row {}", seekto/40);
+        match seekto%40 {
+            0 => {
+                self.file.seek(SeekFrom::Current(seekto));
+                let cmp_hash = self.read_hash();
+                println!("Found hash: {}", cmp_hash);
+                // found a match (exit binary search)
+                if (cmp_hash == self.hash) {
+                    return;
+                } 
+
+                if (cmp_hash > self.hash) {
+                    self.binary_search(seekto/2);
+                } else {
+                    self.binary_search(-seekto/2);
+                }
+            },
+            _ => return
+        }
+    }
+    
 } // end HashFile impl
 
 pub fn get_hash_for_pwd(password: &String) -> String {
@@ -110,13 +134,18 @@ fn main() {
     match args.len() {
         1 => println!("Usage: rpwned [PASSWORD]\n\
         Check password for pwnage.\n\n\
-        \t-f [HASH_FILE]\tcreate hash file structure from pwned password file or update file"),
+        \t-f [HASH_FILE]\tcreate hash file structure from pwned password file or update file\n\
+        \t-h [PASSWORD]\tgenerate hash for supplied password and exit\n"),
         2 => {
             let hash = get_hash_for_pwd(&args[1]);
             println!("Checking {} for pwnage -- {}", args[1], hash);
             match HashFile::new(hash, false) {
                 Ok(mut hf) => {
-                    hf.check_pwd();
+                    if hf.check_pwd() {
+                        println!("HASH FOUND!");
+                    } else {
+                        println!("hash not found");
+                    }
                 },
                 Err(e) => println!("{:?}",e)
             }
